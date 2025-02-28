@@ -147,7 +147,7 @@ impl AbstractTree for Tree {
                     segment_writer.use_bloom_policy(BloomConstructionPolicy::FpRate(0.00001));
             } else {
                 segment_writer =
-                    segment_writer.use_bloom_policy(BloomConstructionPolicy::BitsPerKey(0));
+                    segment_writer.use_bloom_policy(BloomConstructionPolicy::FpRate(0.02));
             }
         }
 
