@@ -281,8 +281,7 @@ fn merge_segments(
 
             segment_writer = segment_writer.use_bloom_policy(bloom_policy);
         } else {
-            segment_writer =
-                segment_writer.use_bloom_policy(BloomConstructionPolicy::BitsPerKey(0));
+            segment_writer = segment_writer.use_bloom_policy(BloomConstructionPolicy::FpRate(0.01));
         }
     }
 
