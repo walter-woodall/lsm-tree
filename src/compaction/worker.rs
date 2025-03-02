@@ -275,11 +275,15 @@ fn merge_segments(
                 num_levels,
                 0.02,
             );
-            let bloom_policy = BloomConstructionPolicy::FpRate(optimal_fpr);
+
+            let bloom_policy = match payload.dest_level {
+                0..=6 => BloomConstructionPolicy::FpRate(optimal_fpr),
+                _ => BloomConstructionPolicy::FpRate(0.02),
+            };
 
             segment_writer = segment_writer.use_bloom_policy(bloom_policy);
         } else {
-            segment_writer = segment_writer.use_bloom_policy(BloomConstructionPolicy::FpRate(0.01));
+            segment_writer = segment_writer.use_bloom_policy(BloomConstructionPolicy::FpRate(0.02));
         }
     }
 
