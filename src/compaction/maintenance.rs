@@ -47,6 +47,10 @@ impl CompactionStrategy for Strategy {
         "MaintenanceStrategy"
     }
 
+    fn get_level_ratio(&self) -> u8 {
+        10
+    }
+
     fn choose(&self, levels: &LevelManifest, _: &Config) -> Choice {
         let resolved_view = levels.resolved_view();
 

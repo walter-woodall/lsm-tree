@@ -54,6 +54,10 @@ impl CompactionStrategy for Strategy {
         "TieredStrategy"
     }
 
+    fn get_level_ratio(&self) -> u8 {
+        self.level_ratio
+    }
+
     fn choose(&self, levels: &LevelManifest, config: &Config) -> Choice {
         let resolved_view = levels.resolved_view();
 

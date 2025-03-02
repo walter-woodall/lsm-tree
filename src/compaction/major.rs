@@ -39,6 +39,10 @@ impl CompactionStrategy for Strategy {
         "MajorCompaction"
     }
 
+    fn get_level_ratio(&self) -> u8 {
+        10
+    }
+
     fn choose(&self, levels: &LevelManifest, _: &Config) -> Choice {
         let segment_ids = levels.iter().map(Segment::id).collect();
 

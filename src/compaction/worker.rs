@@ -269,8 +269,12 @@ fn merge_segments(
         use crate::segment::writer::BloomConstructionPolicy;
 
         if opts.config.bloom_bits_per_key >= 0 {
-            let optimal_fpr =
-                BloomFilter::calculate_fp_rate(payload.dest_level as usize, 10.0, num_levels, 0.02);
+            let optimal_fpr = BloomFilter::calculate_fp_rate(
+                payload.dest_level as usize,
+                f32::from(opts.strategy.get_level_ratio()),
+                num_levels,
+                0.02,
+            );
             let bloom_policy = BloomConstructionPolicy::FpRate(optimal_fpr);
 
             segment_writer = segment_writer.use_bloom_policy(bloom_policy);

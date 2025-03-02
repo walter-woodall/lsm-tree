@@ -213,6 +213,10 @@ impl CompactionStrategy for Strategy {
         "LeveledStrategy"
     }
 
+    fn get_level_ratio(&self) -> u8 {
+        self.level_ratio
+    }
+
     #[allow(clippy::too_many_lines)]
     fn choose(&self, levels: &LevelManifest, _: &Config) -> Choice {
         let view = &levels.levels;

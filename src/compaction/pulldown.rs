@@ -15,6 +15,10 @@ impl CompactionStrategy for Strategy {
         "PullDownCompaction"
     }
 
+    fn get_level_ratio(&self) -> u8 {
+        10
+    }
+
     #[allow(clippy::expect_used)]
     fn choose(&self, levels: &LevelManifest, _: &Config) -> Choice {
         let resolved_view = levels.resolved_view();

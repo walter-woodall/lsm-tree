@@ -75,4 +75,7 @@ pub trait CompactionStrategy {
 
     /// Decides on what to do based on the current state of the LSM-tree's levels
     fn choose(&self, _: &LevelManifest, config: &Config) -> Choice;
+
+    /// Returns the size ratio between levels of this compaction strategy
+    fn get_level_ratio(&self) -> u8;
 }
