@@ -118,7 +118,7 @@ impl Default for Config {
             table_type: TableType::Block,
             compression: CompressionType::None,
             blob_compression: CompressionType::None,
-            bloom_bits_per_key: -1,
+            bloom_bits_per_key: 10,
 
             blob_cache: Arc::new(BlobCache::with_capacity_bytes(/* 16 MiB */ 16 * 1_024 * 1_024)),
             blob_file_target_size: /* 64 MiB */ 64 * 1_024 * 1_024,
