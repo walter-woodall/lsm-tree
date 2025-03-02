@@ -99,6 +99,26 @@ impl BloomFilter {
         }
     }
 
+    /// Calculates the optimal false positive rate for a given level based off the research paper
+    /// Monkey: Optimal Navigable Key Value Store
+    ///
+    /// The algorithm attempts to minimize the total false positive rate among all levels by
+    /// having exponentially lower false positive rates for each lower level. The idea being that
+    /// lower levels store less data and you can achieve lower false positive rates with minimal
+    /// increase in memory.
+    #[must_use]
+    pub fn calculate_fp_rate(
+        level: usize,
+        size_ratio: f32,
+        num_levels: usize,
+        base_fp_rate: f32,
+    ) -> f32 {
+        let remaining_levels = num_levels - level;
+        let multiplier = size_ratio.powi(-(remaining_levels as i32));
+
+        base_fp_rate * multiplier
+    }
+
     /// Constructs a bloom filter that can hold `n` items
     /// while maintaining a certain false positive rate `fpr`.
     #[must_use]
@@ -383,5 +403,25 @@ mod tests {
         let fpr = false_positives as f32 / item_count as f32;
         assert!(fpr > 0.45);
         assert!(fpr < 0.55);
+    }
+
+    #[test]
+    fn test_calculate_fpr() {
+        let num_levels = 7;
+        let size_ratio = 10.0;
+        let base_fpr = 0.02;
+
+        assert_eq!(
+            0.00000002,
+            BloomFilter::calculate_fp_rate(1, size_ratio, num_levels, base_fpr)
+        );
+        assert_eq!(
+            0.000002,
+            BloomFilter::calculate_fp_rate(3, size_ratio, num_levels, base_fpr)
+        );
+        assert_eq!(
+            0.02,
+            BloomFilter::calculate_fp_rate(7, size_ratio, num_levels, base_fpr)
+        );
     }
 }
