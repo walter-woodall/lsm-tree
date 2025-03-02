@@ -12,6 +12,8 @@ use bit_array::BitArray;
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use std::io::{Read, Write};
 
+/// Base false positive rate for monkey
+pub const BASE_FP_RATE: f32 = 0.5;
 /// Two hashes that are used for double hashing
 pub type CompositeHash = (u64, u64);
 
@@ -113,7 +115,7 @@ impl BloomFilter {
         num_levels: usize,
         base_fp_rate: f32,
     ) -> f32 {
-        let remaining_levels = num_levels - level;
+        let remaining_levels = num_levels - 1 - level;
         let multiplier = size_ratio.powi(-(remaining_levels as i32));
 
         base_fp_rate * multiplier
@@ -408,20 +410,20 @@ mod tests {
     #[test]
     fn test_calculate_fpr() {
         let num_levels = 7;
-        let size_ratio = 10.0;
-        let base_fpr = 0.02;
+        let size_ratio = 4.0;
+        let base_fpr = 0.5;
 
         assert_eq!(
-            0.00000002,
+            0.00048828125,
             BloomFilter::calculate_fp_rate(1, size_ratio, num_levels, base_fpr)
         );
         assert_eq!(
-            0.000002,
+            0.0078125,
             BloomFilter::calculate_fp_rate(3, size_ratio, num_levels, base_fpr)
         );
         assert_eq!(
-            0.02,
-            BloomFilter::calculate_fp_rate(7, size_ratio, num_levels, base_fpr)
+            0.5,
+            BloomFilter::calculate_fp_rate(6, size_ratio, num_levels, base_fpr)
         );
     }
 }

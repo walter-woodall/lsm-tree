@@ -5,7 +5,7 @@
 pub mod inner;
 
 use crate::{
-    bloom::BloomFilter,
+    bloom::{BloomFilter, BASE_FP_RATE},
     coding::{Decode, Encode},
     compaction::{stream::CompactionStream, CompactionStrategy},
     config::Config,
@@ -144,9 +144,8 @@ impl AbstractTree for Tree {
             use crate::segment::writer::BloomConstructionPolicy;
 
             if self.config.bloom_bits_per_key >= 0 {
-                const BASE_FP_RATE: f32 = 0.02;
                 let num_levels = self.levels.read().expect("lock is poisoned").levels.len();
-                let optimal_fpr = BloomFilter::calculate_fp_rate(1, 10.0, num_levels, BASE_FP_RATE);
+                let optimal_fpr = BloomFilter::calculate_fp_rate(1, 4.0, num_levels, BASE_FP_RATE);
                 segment_writer =
                     segment_writer.use_bloom_policy(BloomConstructionPolicy::FpRate(optimal_fpr));
             } else {

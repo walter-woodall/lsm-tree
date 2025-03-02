@@ -4,7 +4,7 @@
 
 use super::{CompactionStrategy, Input as CompactionPayload};
 use crate::{
-    bloom::BloomFilter,
+    bloom::{BloomFilter, BASE_FP_RATE},
     compaction::{stream::CompactionStream, Choice},
     file::SEGMENTS_FOLDER,
     level_manifest::LevelManifest,
@@ -273,17 +273,15 @@ fn merge_segments(
                 payload.dest_level as usize,
                 f32::from(opts.strategy.get_level_ratio()),
                 num_levels,
-                0.02,
+                BASE_FP_RATE,
             );
 
-            let bloom_policy = match payload.dest_level {
-                0..=6 => BloomConstructionPolicy::FpRate(optimal_fpr),
-                _ => BloomConstructionPolicy::FpRate(0.02),
-            };
+            let bloom_policy = BloomConstructionPolicy::FpRate(optimal_fpr);
 
             segment_writer = segment_writer.use_bloom_policy(bloom_policy);
         } else {
-            segment_writer = segment_writer.use_bloom_policy(BloomConstructionPolicy::FpRate(0.02));
+            segment_writer =
+                segment_writer.use_bloom_policy(BloomConstructionPolicy::BitsPerKey(10));
         }
     }
 
