@@ -143,14 +143,17 @@ impl AbstractTree for Tree {
         {
             use crate::segment::writer::BloomConstructionPolicy;
 
-            if self.config.bloom_bits_per_key >= 0 {
-                let num_levels = self.levels.read().expect("lock is poisoned").levels.len();
-                let optimal_fpr = BloomFilter::calculate_fp_rate(1, 4.0, num_levels, BASE_FP_RATE);
-                segment_writer =
-                    segment_writer.use_bloom_policy(BloomConstructionPolicy::FpRate(optimal_fpr));
-            } else {
-                segment_writer =
-                    segment_writer.use_bloom_policy(BloomConstructionPolicy::FpRate(0.02));
+            match self.config.filter_config.filter_size {
+                crate::config::FilterSize::Static(bpk) => {
+                    segment_writer =
+                        segment_writer.use_bloom_policy(BloomConstructionPolicy::BitsPerKey(bpk));
+                }
+                crate::config::FilterSize::Dynamic(base_fpr) => {
+                    let num_levels = self.levels.read().expect("lock is poisoned").levels.len();
+                    let optimal_fpr = BloomFilter::calculate_fp_rate(1, 4.0, num_levels, base_fpr);
+                    segment_writer = segment_writer
+                        .use_bloom_policy(BloomConstructionPolicy::FpRate(optimal_fpr));
+                }
             }
         }
 

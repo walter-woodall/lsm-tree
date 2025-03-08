@@ -48,6 +48,33 @@ impl TryFrom<u8> for TreeType {
 const DEFAULT_FILE_FOLDER: &str = ".lsm.data";
 
 #[derive(Clone)]
+pub enum FilterType {
+    Bloom,
+    BinaryFuse,
+}
+
+#[derive(Clone)]
+pub enum FilterSize {
+    Static(u8),
+    Dynamic(f32),
+}
+
+#[derive(Clone)]
+pub struct FilterConfig {
+    pub filter_type: FilterType,
+    pub filter_size: FilterSize,
+}
+
+impl Default for FilterConfig {
+    fn default() -> Self {
+        Self {
+            filter_type: FilterType::Bloom,
+            filter_size: FilterSize::Static(10),
+        }
+    }
+}
+
+#[derive(Clone)]
 /// Tree configuration builder
 pub struct Config {
     /// Folder path
@@ -77,11 +104,8 @@ pub struct Config {
     /// Amount of levels of the LSM tree (depth of tree)
     pub level_count: u8,
 
-    /// Bits per key for levels that are not L0, L1, L2
-    // NOTE: bloom_bits_per_key is not conditionally compiled,
-    // because that would change the file format
-    #[doc(hidden)]
-    pub bloom_bits_per_key: i8,
+    /// Configuration for the filter
+    pub filter_config: FilterConfig,
 
     /// Block cache to use
     #[doc(hidden)]
@@ -118,7 +142,7 @@ impl Default for Config {
             table_type: TableType::Block,
             compression: CompressionType::None,
             blob_compression: CompressionType::None,
-            bloom_bits_per_key: 10,
+            filter_config: FilterConfig::default(),
 
             blob_cache: Arc::new(BlobCache::with_capacity_bytes(/* 16 MiB */ 16 * 1_024 * 1_024)),
             blob_file_target_size: /* 64 MiB */ 64 * 1_024 * 1_024,
@@ -136,21 +160,10 @@ impl Config {
         }
     }
 
-    /// Sets the bits per key to use for bloom filters
-    /// in levels that are not L0 or L1.
-    ///
-    /// Use -1 to disable bloom filters even in L0, L1, L2.
-    ///
-    /// Defaults to 10 bits.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `n` is less than -1.
+    /// Sets the filter_config used by the LSM-Tree.
     #[must_use]
-    pub fn bloom_bits_per_key(mut self, bits: i8) -> Self {
-        assert!(bits >= -1, "invalid bits_per_key value");
-
-        self.bloom_bits_per_key = bits;
+    pub fn filter_config(mut self, config: FilterConfig) -> Self {
+        self.filter_config = config;
         self
     }
 

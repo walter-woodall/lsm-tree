@@ -268,20 +268,21 @@ fn merge_segments(
     {
         use crate::segment::writer::BloomConstructionPolicy;
 
-        if opts.config.bloom_bits_per_key >= 0 {
-            let optimal_fpr = BloomFilter::calculate_fp_rate(
-                payload.dest_level as usize,
-                f32::from(opts.strategy.get_level_ratio()),
-                num_levels,
-                BASE_FP_RATE,
-            );
-
-            let bloom_policy = BloomConstructionPolicy::FpRate(optimal_fpr);
-
-            segment_writer = segment_writer.use_bloom_policy(bloom_policy);
-        } else {
-            segment_writer =
-                segment_writer.use_bloom_policy(BloomConstructionPolicy::BitsPerKey(10));
+        match opts.config.filter_config.filter_size {
+            crate::config::FilterSize::Static(bpk) => {
+                segment_writer =
+                    segment_writer.use_bloom_policy(BloomConstructionPolicy::BitsPerKey(bpk));
+            }
+            crate::config::FilterSize::Dynamic(base_fpr) => {
+                let optimal_fpr = BloomFilter::calculate_fp_rate(
+                    payload.dest_level as usize,
+                    f32::from(opts.strategy.get_level_ratio()),
+                    num_levels,
+                    base_fpr,
+                );
+                segment_writer =
+                    segment_writer.use_bloom_policy(BloomConstructionPolicy::FpRate(optimal_fpr));
+            }
         }
     }
 
