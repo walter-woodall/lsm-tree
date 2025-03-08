@@ -2,8 +2,6 @@
 // This source code is licensed under both the Apache 2.0 and MIT License
 // (found in the LICENSE-* files in the repository)
 
-mod bit_array;
-
 use crate::{
     coding::{Decode, DecodeError, Encode, EncodeError},
     file::MAGIC_BYTES,
@@ -12,11 +10,17 @@ use bit_array::BitArray;
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use std::io::{Read, Write};
 
+mod bit_array;
+mod fuse;
+
 /// Base false positive rate for monkey
 pub const BASE_FP_RATE: f32 = 0.5;
 /// Two hashes that are used for double hashing
 pub type CompositeHash = (u64, u64);
 
+trait Filter {
+    fn contains_key(&self, key: &[u8]) -> bool;
+}
 /// A standard bloom filter
 ///
 /// Allows buffering the key hashes before actual filter construction
@@ -82,6 +86,16 @@ impl Decode for BloomFilter {
         reader.read_exact(&mut bytes)?;
 
         Ok(Self::from_raw(m, k, bytes.into_boxed_slice()))
+    }
+}
+
+impl Filter for BloomFilter {
+    /// Returns `true` if the item may be contained.
+    ///
+    /// Will never have a false negative.
+    #[must_use]
+    fn contains_key(&self, key: &[u8]) -> bool {
+        self.contains_hash(Self::get_hash(key))
     }
 }
 
@@ -205,14 +219,6 @@ impl BloomFilter {
         true
     }
 
-    /// Returns `true` if the item may be contained.
-    ///
-    /// Will never have a false negative.
-    #[must_use]
-    pub fn contains(&self, key: &[u8]) -> bool {
-        self.contains_hash(Self::get_hash(key))
-    }
-
     /// Adds the key to the filter.
     pub fn set_with_hash(&mut self, (mut h1, mut h2): CompositeHash) {
         for i in 0..(self.k as u64) {
@@ -260,21 +266,21 @@ mod tests {
 
         let mut filter = BloomFilter::with_fp_rate(10, 0.0001);
 
-        let keys = &[
+        let keys = [
             b"item0", b"item1", b"item2", b"item3", b"item4", b"item5", b"item6", b"item7",
             b"item8", b"item9",
         ];
 
         for key in keys {
-            filter.set_with_hash(BloomFilter::get_hash(*key));
+            filter.set_with_hash(BloomFilter::get_hash(key));
         }
 
         for key in keys {
-            assert!(filter.contains(&**key));
+            assert!(filter.contains_key(key));
         }
-        assert!(!filter.contains(b"asdasads"));
-        assert!(!filter.contains(b"item10"));
-        assert!(!filter.contains(b"cxycxycxy"));
+        assert!(!filter.contains_key(b"asdasads"));
+        assert!(!filter.contains_key(b"item10"));
+        assert!(!filter.contains_key(b"cxycxycxy"));
 
         filter.encode_into(&mut file)?;
         file.sync_all()?;
@@ -286,11 +292,11 @@ mod tests {
         assert_eq!(filter, filter_copy);
 
         for key in keys {
-            assert!(filter.contains(&**key));
+            assert!(filter.contains_key(key));
         }
-        assert!(!filter_copy.contains(b"asdasads"));
-        assert!(!filter_copy.contains(b"item10"));
-        assert!(!filter_copy.contains(b"cxycxycxy"));
+        assert!(!filter_copy.contains_key(b"asdasads"));
+        assert!(!filter_copy.contains_key(b"item10"));
+        assert!(!filter_copy.contains_key(b"cxycxycxy"));
 
         Ok(())
     }
@@ -310,11 +316,11 @@ mod tests {
             b"item0", b"item1", b"item2", b"item3", b"item4", b"item5", b"item6", b"item7",
             b"item8", b"item9",
         ] {
-            assert!(!filter.contains(key));
+            assert!(!filter.contains_key(key));
             filter.set_with_hash(BloomFilter::get_hash(key));
-            assert!(filter.contains(key));
+            assert!(filter.contains_key(key));
 
-            assert!(!filter.contains(b"asdasdasdasdasdasdasd"));
+            assert!(!filter.contains_key(b"asdasdasdasdasdasdasd"));
         }
     }
 
@@ -329,7 +335,7 @@ mod tests {
             let key = key.as_bytes();
 
             filter.set_with_hash(BloomFilter::get_hash(key));
-            assert!(filter.contains(key));
+            assert!(filter.contains_key(key));
         }
 
         let mut false_positives = 0;
@@ -337,7 +343,7 @@ mod tests {
         for key in (0..item_count).map(|_| nanoid::nanoid!()) {
             let key = key.as_bytes();
 
-            if filter.contains(key) {
+            if filter.contains_key(key) {
                 false_positives += 1;
             }
         }
@@ -358,7 +364,7 @@ mod tests {
             let key = key.as_bytes();
 
             filter.set_with_hash(BloomFilter::get_hash(key));
-            assert!(filter.contains(key));
+            assert!(filter.contains_key(key));
         }
 
         let mut false_positives = 0;
@@ -366,7 +372,7 @@ mod tests {
         for key in (0..item_count).map(|_| nanoid::nanoid!()) {
             let key = key.as_bytes();
 
-            if filter.contains(key) {
+            if filter.contains_key(key) {
                 false_positives += 1;
             }
         }
@@ -388,7 +394,7 @@ mod tests {
             let key = key.as_bytes();
 
             filter.set_with_hash(BloomFilter::get_hash(key));
-            assert!(filter.contains(key));
+            assert!(filter.contains_key(key));
         }
 
         let mut false_positives = 0;
@@ -396,7 +402,7 @@ mod tests {
         for key in (0..item_count).map(|_| nanoid::nanoid!()) {
             let key = key.as_bytes();
 
-            if filter.contains(key) {
+            if filter.contains_key(key) {
                 false_positives += 1;
             }
         }
