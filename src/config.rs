@@ -47,19 +47,19 @@ impl TryFrom<u8> for TreeType {
 
 const DEFAULT_FILE_FOLDER: &str = ".lsm.data";
 
-#[derive(Clone)]
+#[derive(Clone, Copy, Debug)]
 pub enum FilterType {
     Bloom,
     BinaryFuse,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy, Debug)]
 pub enum FilterSize {
     Static(u8),
     Dynamic(f32),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy, Debug)]
 pub struct FilterConfig {
     pub filter_type: FilterType,
     pub filter_size: FilterSize,

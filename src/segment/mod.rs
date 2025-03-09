@@ -20,7 +20,7 @@ pub mod writer;
 
 use crate::{
     block_cache::BlockCache,
-    bloom::{BloomFilter, CompositeHash},
+    bloom::{BloomFilter, Filter, HashType},
     descriptor_table::FileDescriptorTable,
     time::unix_timestamp,
     tree::inner::TreeId,
@@ -33,7 +33,7 @@ use inner::Inner;
 use meta::SegmentId;
 use range::Range;
 use scanner::Scanner;
-use std::{ops::Bound, path::Path, sync::Arc};
+use std::{hash::Hash, ops::Bound, path::Path, sync::Arc};
 
 #[allow(clippy::module_name_repetitions)]
 pub type SegmentInner = Inner;
@@ -213,10 +213,10 @@ impl Segment {
         Ok(broken_count)
     }
 
-    pub(crate) fn load_bloom<P: AsRef<Path>>(
+    pub(crate) fn load_filter<P: AsRef<Path>>(
         path: P,
         ptr: value_block::BlockOffset,
-    ) -> crate::Result<Option<BloomFilter>> {
+    ) -> crate::Result<Option<Filter>> {
         Ok(if *ptr > 0 {
             use crate::coding::Decode;
             use std::{
@@ -226,7 +226,7 @@ impl Segment {
 
             let mut reader = File::open(path)?;
             reader.seek(SeekFrom::Start(*ptr))?;
-            Some(BloomFilter::decode_from(&mut reader)?)
+            Some(Filter::decode_from(&mut reader)?)
         } else {
             None
         })
@@ -287,24 +287,21 @@ impl Segment {
             block_index: Arc::new(block_index),
             block_cache,
 
-            bloom_filter: Self::load_bloom(file_path, bloom_ptr)?,
+            filter: Self::load_filter(file_path, bloom_ptr)?,
         })))
     }
 
     #[must_use]
     /// Gets the bloom filter size
     pub fn bloom_filter_size(&self) -> usize {
-        self.bloom_filter
-            .as_ref()
-            .map(super::bloom::BloomFilter::len)
-            .unwrap_or_default()
+        self.filter.as_ref().map(Filter::size).unwrap_or_default()
     }
 
     pub fn get<K: AsRef<[u8]>>(
         &self,
         key: K,
         seqno: Option<SeqNo>,
-        hash: CompositeHash,
+        hash: HashType,
     ) -> crate::Result<Option<InternalValue>> {
         if let Some(seqno) = seqno {
             if self.metadata.seqnos.0 >= seqno {
@@ -316,8 +313,8 @@ impl Segment {
             return Ok(None);
         }
 
-        if let Some(bf) = &self.bloom_filter {
-            if !bf.contains_hash(hash) {
+        if let Some(filter) = &self.filter {
+            if !filter.contains_hash(hash) {
                 return Ok(None);
             }
         }

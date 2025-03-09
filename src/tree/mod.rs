@@ -5,10 +5,10 @@
 pub mod inner;
 
 use crate::{
-    bloom::{BloomFilter, BASE_FP_RATE},
+    bloom::BloomFilter,
     coding::{Decode, Encode},
     compaction::{stream::CompactionStream, CompactionStrategy},
-    config::Config,
+    config::{Config, FilterConfig, FilterSize},
     descriptor_table::FileDescriptorTable,
     level_manifest::LevelManifest,
     manifest::Manifest,
@@ -132,30 +132,27 @@ impl AbstractTree for Tree {
         let folder = self.config.path.join(SEGMENTS_FOLDER);
         log::debug!("writing segment to {folder:?}");
 
+        // Determine the correct filter size for this level based off the base config
+        let filter_size = match self.config.filter_config.filter_size {
+            crate::config::FilterSize::Static(bpk) => FilterSize::Static(bpk),
+            crate::config::FilterSize::Dynamic(base_fpr) => {
+                let num_levels = self.levels.read().expect("lock is poisoned").levels.len();
+                let optimal_fpr = BloomFilter::calculate_fp_rate(1, 4.0, num_levels, base_fpr);
+                FilterSize::Dynamic(optimal_fpr)
+            }
+        };
+
         let mut segment_writer = Writer::new(Options {
             segment_id,
             folder,
             data_block_size: self.config.data_block_size,
             index_block_size: self.config.index_block_size,
+            filter_config: FilterConfig {
+                filter_type: self.config.filter_config.filter_type,
+                filter_size,
+            },
         })?
         .use_compression(self.config.compression);
-
-        {
-            use crate::segment::writer::BloomConstructionPolicy;
-
-            match self.config.filter_config.filter_size {
-                crate::config::FilterSize::Static(bpk) => {
-                    segment_writer =
-                        segment_writer.use_bloom_policy(BloomConstructionPolicy::BitsPerKey(bpk));
-                }
-                crate::config::FilterSize::Dynamic(base_fpr) => {
-                    let num_levels = self.levels.read().expect("lock is poisoned").levels.len();
-                    let optimal_fpr = BloomFilter::calculate_fp_rate(1, 4.0, num_levels, base_fpr);
-                    segment_writer = segment_writer
-                        .use_bloom_policy(BloomConstructionPolicy::FpRate(optimal_fpr));
-                }
-            }
-        }
 
         let iter = memtable.iter().map(Ok);
         let compaction_filter = CompactionStream::new(iter, seqno_threshold);
@@ -467,7 +464,7 @@ impl Tree {
             block_index,
             block_cache: self.config.block_cache.clone(),
 
-            bloom_filter: Segment::load_bloom(&segment_file_path, trailer.offsets.bloom_ptr)?,
+            filter: Segment::load_filter(&segment_file_path, trailer.offsets.bloom_ptr)?,
         }
         .into();
 
@@ -562,7 +559,8 @@ impl Tree {
     ) -> crate::Result<Option<InternalValue>> {
         // NOTE: Create key hash for hash sharing
         // https://fjall-rs.github.io/post/bloom-filter-hash-sharing/
-        let key_hash = crate::bloom::BloomFilter::get_hash(key.as_ref());
+        let key_hash =
+            crate::bloom::Filter::get_hash(key.as_ref(), self.config.filter_config.filter_type);
 
         let level_manifest = self.levels.read().expect("lock is poisoned");
 

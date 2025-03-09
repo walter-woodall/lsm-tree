@@ -13,8 +13,9 @@ use super::{
     value_block::ValueBlock,
 };
 use crate::{
-    bloom::BloomFilter,
+    bloom::{Filter, HashType},
     coding::Encode,
+    config::FilterConfig,
     file::fsync_directory,
     segment::{block::ItemSize, value_block::BlockOffset},
     value::{InternalValue, UserKey},
@@ -53,42 +54,8 @@ pub struct Writer {
 
     current_key: Option<UserKey>,
 
-    bloom_policy: BloomConstructionPolicy,
-
     /// Hashes for bloom filter
-    ///
-    /// using enhanced double hashing, so we got two u64s
-    bloom_hash_buffer: Vec<(u64, u64)>,
-}
-
-#[derive(Copy, Clone, Debug)]
-pub enum BloomConstructionPolicy {
-    BitsPerKey(u8),
-    FpRate(f32),
-}
-
-impl Default for BloomConstructionPolicy {
-    fn default() -> Self {
-        Self::BitsPerKey(10)
-    }
-}
-
-impl BloomConstructionPolicy {
-    #[must_use]
-    pub fn build(&self, n: usize) -> BloomFilter {
-        match self {
-            Self::BitsPerKey(bpk) => BloomFilter::with_bpk(n, *bpk),
-            Self::FpRate(fpr) => BloomFilter::with_fp_rate(n, *fpr),
-        }
-    }
-
-    #[must_use]
-    pub fn is_active(&self) -> bool {
-        match self {
-            Self::BitsPerKey(bpk) => *bpk > 0,
-            Self::FpRate(_) => true,
-        }
-    }
+    bloom_hash_buffer: Vec<HashType>,
 }
 
 pub struct Options {
@@ -96,6 +63,7 @@ pub struct Options {
     pub data_block_size: u32,
     pub index_block_size: u32,
     pub segment_id: SegmentId,
+    pub filter_config: FilterConfig,
 }
 
 impl Writer {
@@ -128,8 +96,6 @@ impl Writer {
 
             current_key: None,
 
-            bloom_policy: BloomConstructionPolicy::default(),
-
             bloom_hash_buffer: Vec::new(),
         })
     }
@@ -138,12 +104,6 @@ impl Writer {
     pub(crate) fn use_compression(mut self, compression: CompressionType) -> Self {
         self.compression = compression;
         self.index_writer = self.index_writer.use_compression(compression);
-        self
-    }
-
-    #[must_use]
-    pub(crate) fn use_bloom_policy(mut self, bloom_policy: BloomConstructionPolicy) -> Self {
-        self.bloom_policy = bloom_policy;
         self
     }
 
@@ -223,10 +183,10 @@ impl Writer {
             // IMPORTANT: Do not buffer *every* item's key
             // because there may be multiple versions
             // of the same key
-            if self.bloom_policy.is_active() {
-                self.bloom_hash_buffer
-                    .push(BloomFilter::get_hash(&item.key.user_key));
-            }
+            self.bloom_hash_buffer.push(Filter::get_hash(
+                &item.key.user_key,
+                self.opts.filter_config.filter_type,
+            ));
         }
 
         let seqno = item.key.seqno;
@@ -279,16 +239,15 @@ impl Writer {
 
                 log::trace!(
                     "Constructing Bloom filter with {n} entries: {:?}",
-                    self.bloom_policy,
+                    self.opts.filter_config.filter_type,
                 );
 
                 let start = std::time::Instant::now();
 
-                let mut filter = self.bloom_policy.build(n);
-
-                for hash in std::mem::take(&mut self.bloom_hash_buffer) {
-                    filter.set_with_hash(hash);
-                }
+                let filter = Filter::new(
+                    self.opts.filter_config,
+                    std::mem::take(&mut self.bloom_hash_buffer),
+                );
 
                 log::trace!("Built Bloom filter in {:?}", start.elapsed());
 
@@ -373,6 +332,7 @@ mod tests {
             data_block_size: 4_096,
             index_block_size: 4_096,
             segment_id,
+            filter_config: FilterConfig::default(),
         })?;
 
         writer.write(InternalValue::from_components(
@@ -421,8 +381,8 @@ mod tests {
             data_block_size: 4_096,
             index_block_size: 4_096,
             segment_id,
-        })?
-        .use_bloom_policy(BloomConstructionPolicy::BitsPerKey(0));
+            filter_config: FilterConfig::default(),
+        })?;
 
         let items = (0u64..ITEM_COUNT).map(|i| {
             InternalValue::from_components(
@@ -459,6 +419,7 @@ mod tests {
             data_block_size: 4_096,
             index_block_size: 4_096,
             segment_id,
+            filter_config: FilterConfig::default(),
         })?;
 
         let items = (0u64..ITEM_COUNT).map(|i| {
@@ -529,6 +490,7 @@ mod tests {
             data_block_size: 4_096,
             index_block_size: 4_096,
             segment_id,
+            filter_config: FilterConfig::default(),
         })?;
 
         for key in 0u64..ITEM_COUNT {

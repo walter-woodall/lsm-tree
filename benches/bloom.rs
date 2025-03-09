@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use lsm_tree::bloom::BloomFilter;
+use lsm_tree::bloom::{BloomFilter, Filter};
 
 fn filter_construction(c: &mut Criterion) {
     let mut filter = BloomFilter::with_fp_rate(1_000_000, 0.01);

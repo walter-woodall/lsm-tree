@@ -388,6 +388,7 @@ mod tests {
     use super::{Choice, Strategy};
     use crate::{
         block_cache::BlockCache,
+        bloom::{BloomFilter, Filter},
         compaction::{CompactionStrategy, Input as CompactionInput},
         descriptor_table::FileDescriptorTable,
         key_range::KeyRange,
@@ -460,7 +461,7 @@ mod tests {
             },
             block_cache,
 
-            bloom_filter: Some(crate::bloom::BloomFilter::with_fp_rate(1, 0.1)),
+            filter: Some(Filter::Bloom(BloomFilter::with_fp_rate(1, 0.1))),
         }
         .into()
     }

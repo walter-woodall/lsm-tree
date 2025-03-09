@@ -4,7 +4,7 @@
 
 use super::{
     trailer::SegmentFileTrailer,
-    writer::{BloomConstructionPolicy, Options, Writer},
+    writer::{Options, Writer},
 };
 use crate::{value::InternalValue, CompressionType, UserKey};
 use std::sync::{atomic::AtomicU64, Arc};
@@ -30,8 +30,6 @@ pub struct MultiWriter {
 
     pub compression: CompressionType,
 
-    bloom_policy: BloomConstructionPolicy,
-
     current_key: Option<UserKey>,
 }
 
@@ -50,6 +48,7 @@ impl MultiWriter {
             folder: opts.folder.clone(),
             data_block_size: opts.data_block_size,
             index_block_size: opts.index_block_size,
+            filter_config: opts.filter_config,
         })?;
 
         Ok(Self {
@@ -62,8 +61,6 @@ impl MultiWriter {
 
             compression: CompressionType::None,
 
-            bloom_policy: BloomConstructionPolicy::default(),
-
             current_key: None,
         })
     }
@@ -72,13 +69,6 @@ impl MultiWriter {
     pub fn use_compression(mut self, compression: CompressionType) -> Self {
         self.compression = compression;
         self.writer = self.writer.use_compression(compression);
-        self
-    }
-
-    #[must_use]
-    pub fn use_bloom_policy(mut self, bloom_policy: BloomConstructionPolicy) -> Self {
-        self.bloom_policy = bloom_policy;
-        self.writer = self.writer.use_bloom_policy(bloom_policy);
         self
     }
 
@@ -103,10 +93,9 @@ impl MultiWriter {
             folder: self.opts.folder.clone(),
             data_block_size: self.opts.data_block_size,
             index_block_size: self.opts.index_block_size,
+            filter_config: self.opts.filter_config,
         })?
         .use_compression(self.compression);
-
-        new_writer = new_writer.use_bloom_policy(self.bloom_policy);
 
         let mut old_writer = std::mem::replace(&mut self.writer, new_writer);
 

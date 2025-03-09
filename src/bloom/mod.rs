@@ -4,23 +4,141 @@
 
 use crate::{
     coding::{Decode, DecodeError, Encode, EncodeError},
+    config::{FilterConfig, FilterType},
     file::MAGIC_BYTES,
 };
 use bit_array::BitArray;
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use std::io::{Read, Write};
+use xorf::{BinaryFuse8, Filter as FuseFilter};
+use xxhash_rust::xxh3::xxh3_64;
 
 mod bit_array;
 mod fuse;
 
-/// Base false positive rate for monkey
-pub const BASE_FP_RATE: f32 = 0.5;
-/// Two hashes that are used for double hashing
-pub type CompositeHash = (u64, u64);
-
-trait Filter {
-    fn contains_key(&self, key: &[u8]) -> bool;
+#[derive(Clone, Copy)]
+pub enum HashType {
+    Single(u64),
+    Composite(u64, u64),
 }
+
+pub enum Filter {
+    Bloom(BloomFilter),
+    BinaryFuse(BinaryFuse8),
+}
+
+impl Filter {
+    pub fn new(config: FilterConfig, hashes: Vec<HashType>) -> Self {
+        match config.filter_type {
+            FilterType::Bloom => {
+                let mut filter = match config.filter_size {
+                    crate::config::FilterSize::Static(bpk) => {
+                        BloomFilter::with_bpk(hashes.len(), bpk)
+                    }
+                    crate::config::FilterSize::Dynamic(fpr) => {
+                        BloomFilter::with_fp_rate(hashes.len(), fpr)
+                    }
+                };
+
+                for hash in hashes {
+                    filter.set_with_hash(hash);
+                }
+
+                Self::Bloom(filter)
+            }
+            FilterType::BinaryFuse => {
+                let fingerprints: Vec<u64> = hashes
+                    .iter()
+                    .map(|h: &HashType| match h {
+                        HashType::Single(k) => *k,
+                        HashType::Composite(_, _) => {
+                            panic!("BinaryFuse filters do not support composite hashes")
+                        }
+                    })
+                    .collect();
+                let filter = BinaryFuse8::try_from(fingerprints)
+                    .expect("Failed to build filter with hashes");
+                Self::BinaryFuse(filter)
+            }
+        }
+    }
+
+    pub fn contains(&self, key: &[u8]) -> bool {
+        match self {
+            Filter::Bloom(bloom_filter) => bloom_filter.contains_key(key),
+            Filter::BinaryFuse(binary_fuse8) => {
+                let hash: u64 = xxh3_64(key);
+                binary_fuse8.contains(&hash)
+            }
+        }
+    }
+    pub fn get_hash(key: &[u8], filter_type: FilterType) -> HashType {
+        match filter_type {
+            FilterType::Bloom => BloomFilter::get_hash(key),
+            FilterType::BinaryFuse => {
+                let hash: u64 = xxh3_64(key);
+                HashType::Single(hash)
+            }
+        }
+    }
+    pub fn contains_hash(&self, hash: HashType) -> bool {
+        match self {
+            Filter::Bloom(bloom_filter) => bloom_filter.contains_hash(hash),
+            Filter::BinaryFuse(binary_fuse) => match hash {
+                HashType::Single(hash_key) => binary_fuse.contains(&hash_key),
+                HashType::Composite(_, _) => {
+                    panic!("BinaryFuse filter only supports single hash key")
+                }
+            },
+        }
+    }
+
+    pub fn size(&self) -> usize {
+        match self {
+            Filter::Bloom(bloom_filter) => bloom_filter.len(),
+            Filter::BinaryFuse(binary_fuse8) => binary_fuse8.len(),
+        }
+    }
+}
+
+impl Encode for Filter {
+    fn encode_into<W: Write>(&self, writer: &mut W) -> Result<(), EncodeError> {
+        match self {
+            Filter::Bloom(bloom_filter) => bloom_filter.encode_into(writer),
+            Filter::BinaryFuse(binary_fuse) => binary_fuse.encode_into(writer),
+        }
+    }
+}
+
+impl Decode for Filter {
+    fn decode_from<R: Read>(reader: &mut R) -> Result<Self, DecodeError>
+    where
+        Self: Sized,
+    {
+        // Check header
+        let mut magic = [0u8; MAGIC_BYTES.len()];
+        reader.read_exact(&mut magic)?;
+
+        if magic != MAGIC_BYTES {
+            return Err(DecodeError::InvalidHeader("BloomFilter"));
+        }
+
+        // NOTE: Filter type (unused)
+        let filter_type = reader.read_u8()?;
+        match filter_type {
+            0 => {
+                let filter = BloomFilter::decode_from(reader)?;
+                Ok(Filter::Bloom(filter))
+            }
+            1 => {
+                let filter = BinaryFuse8::decode_from(reader)?;
+                Ok(Filter::BinaryFuse(filter))
+            }
+            _ => panic!("Unknown filter type"),
+        }
+    }
+}
+
 /// A standard bloom filter
 ///
 /// Allows buffering the key hashes before actual filter construction
@@ -63,18 +181,6 @@ impl Encode for BloomFilter {
 
 impl Decode for BloomFilter {
     fn decode_from<R: Read>(reader: &mut R) -> Result<Self, DecodeError> {
-        // Check header
-        let mut magic = [0u8; MAGIC_BYTES.len()];
-        reader.read_exact(&mut magic)?;
-
-        if magic != MAGIC_BYTES {
-            return Err(DecodeError::InvalidHeader("BloomFilter"));
-        }
-
-        // NOTE: Filter type (unused)
-        let filter_type = reader.read_u8()?;
-        assert_eq!(0, filter_type, "Invalid filter type");
-
         // NOTE: Hash type (unused)
         let hash_type = reader.read_u8()?;
         assert_eq!(0, hash_type, "Invalid bloom hash type");
@@ -86,16 +192,6 @@ impl Decode for BloomFilter {
         reader.read_exact(&mut bytes)?;
 
         Ok(Self::from_raw(m, k, bytes.into_boxed_slice()))
-    }
-}
-
-impl Filter for BloomFilter {
-    /// Returns `true` if the item may be contained.
-    ///
-    /// Will never have a false negative.
-    #[must_use]
-    fn contains_key(&self, key: &[u8]) -> bool {
-        self.contains_hash(Self::get_hash(key))
     }
 }
 
@@ -196,38 +292,20 @@ impl BloomFilter {
         ((m / 8.0).ceil() * 8.0) as usize
     }
 
-    /// Returns `true` if the hash may be contained.
-    ///
-    /// Will never have a false negative.
-    #[must_use]
-    pub fn contains_hash(&self, hash: CompositeHash) -> bool {
-        let (mut h1, mut h2) = hash;
-
-        for i in 0..(self.k as u64) {
-            let idx = h1 % (self.m as u64);
-
-            // NOTE: should be in bounds because of modulo
-            #[allow(clippy::expect_used)]
-            if !self.has_bit(idx as usize) {
-                return false;
-            }
-
-            h1 = h1.wrapping_add(h2);
-            h2 = h2.wrapping_add(i);
-        }
-
-        true
-    }
-
     /// Adds the key to the filter.
-    pub fn set_with_hash(&mut self, (mut h1, mut h2): CompositeHash) {
-        for i in 0..(self.k as u64) {
-            let idx = h1 % (self.m as u64);
+    pub fn set_with_hash(&mut self, mut hash: HashType) {
+        match hash {
+            HashType::Single(_) => panic!("BloomFilter only supports composite hash"),
+            HashType::Composite(mut h1, mut h2) => {
+                for i in 0..(self.k as u64) {
+                    let idx = h1 % (self.m as u64);
 
-            self.enable_bit(idx as usize);
+                    self.enable_bit(idx as usize);
 
-            h1 = h1.wrapping_add(h2);
-            h2 = h2.wrapping_add(i);
+                    h1 = h1.wrapping_add(h2);
+                    h2 = h2.wrapping_add(i);
+                }
+            }
         }
     }
 
@@ -243,11 +321,45 @@ impl BloomFilter {
 
     /// Gets the hash of a key.
     #[must_use]
-    pub fn get_hash(key: &[u8]) -> CompositeHash {
+    pub fn get_hash(key: &[u8]) -> HashType {
         let h0 = xxhash_rust::xxh3::xxh3_128(key);
         let h1 = (h0 >> 64) as u64;
         let h2 = h0 as u64;
-        (h1, h2)
+        HashType::Composite(h1, h2)
+    }
+
+    /// Returns `true` if the item may be contained.
+    ///
+    /// Will never have a false negative.
+    #[must_use]
+    fn contains_key(&self, key: &[u8]) -> bool {
+        self.contains_hash(Self::get_hash(key))
+    }
+
+    /// Returns `true` if the hash may be contained.
+    ///
+    /// Will never have a false negative.
+    #[must_use]
+    pub fn contains_hash(&self, hash: HashType) -> bool {
+        match hash {
+            HashType::Single(_) => panic!("BloomFilter requires a composite hash"),
+            HashType::Composite(mut h1, mut h2) => {
+                for i in 0..(self.k as u64) {
+                    let idx = h1 % (self.m as u64);
+
+                    // NOTE: should be in bounds because of modulo
+                    #[allow(clippy::expect_used)]
+                    if !self.has_bit(idx as usize) {
+                        return false;
+                    }
+
+                    h1 = h1.wrapping_add(h2);
+                    h2 = h2.wrapping_add(i);
+                }
+            }
+        }
+
+        true
     }
 }
 

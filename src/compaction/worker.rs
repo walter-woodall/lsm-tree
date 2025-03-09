@@ -4,8 +4,9 @@
 
 use super::{CompactionStrategy, Input as CompactionPayload};
 use crate::{
-    bloom::{BloomFilter, BASE_FP_RATE},
+    bloom::BloomFilter,
     compaction::{stream::CompactionStream, Choice},
+    config::{FilterConfig, FilterSize},
     file::SEGMENTS_FOLDER,
     level_manifest::LevelManifest,
     level_scanner::LevelScanner,
@@ -242,6 +243,19 @@ fn merge_segments(
 
     let start = Instant::now();
 
+    let filter_size = match opts.config.filter_config.filter_size {
+        crate::config::FilterSize::Static(bpk) => FilterSize::Static(bpk),
+        crate::config::FilterSize::Dynamic(base_fpr) => {
+            let optimal_fpr = BloomFilter::calculate_fp_rate(
+                payload.dest_level as usize,
+                f32::from(opts.strategy.get_level_ratio()),
+                num_levels,
+                base_fpr,
+            );
+            FilterSize::Dynamic(optimal_fpr)
+        }
+    };
+
     let Ok(segment_writer) = MultiWriter::new(
         opts.segment_id_generator.clone(),
         payload.target_size,
@@ -250,6 +264,10 @@ fn merge_segments(
             segment_id: 0, // TODO: this is never used in MultiWriter
             data_block_size: opts.config.data_block_size,
             index_block_size: opts.config.index_block_size,
+            filter_config: FilterConfig {
+                filter_type: opts.config.filter_config.filter_type,
+                filter_size,
+            },
         },
     ) else {
         log::error!("Compaction failed");
@@ -264,27 +282,6 @@ fn merge_segments(
     };
 
     let mut segment_writer = segment_writer.use_compression(opts.config.compression);
-
-    {
-        use crate::segment::writer::BloomConstructionPolicy;
-
-        match opts.config.filter_config.filter_size {
-            crate::config::FilterSize::Static(bpk) => {
-                segment_writer =
-                    segment_writer.use_bloom_policy(BloomConstructionPolicy::BitsPerKey(bpk));
-            }
-            crate::config::FilterSize::Dynamic(base_fpr) => {
-                let optimal_fpr = BloomFilter::calculate_fp_rate(
-                    payload.dest_level as usize,
-                    f32::from(opts.strategy.get_level_ratio()),
-                    num_levels,
-                    base_fpr,
-                );
-                segment_writer =
-                    segment_writer.use_bloom_policy(BloomConstructionPolicy::FpRate(optimal_fpr));
-            }
-        }
-    }
 
     for (idx, item) in merge_iter.enumerate() {
         let Ok(item) = item else {
@@ -384,7 +381,7 @@ fn merge_segments(
                 #[allow(clippy::needless_borrows_for_generic_args)]
                 block_index,
 
-                bloom_filter: Segment::load_bloom(&segment_file_path, trailer.offsets.bloom_ptr)?,
+                filter: Segment::load_filter(&segment_file_path, trailer.offsets.bloom_ptr)?,
             }
             .into())
         })

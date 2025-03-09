@@ -10,6 +10,7 @@ pub mod value;
 use crate::{
     coding::{Decode, Encode},
     compaction::stream::CompactionStream,
+    config::FilterConfig,
     file::BLOBS_FOLDER,
     r#abstract::{AbstractTree, RangeItem},
     tree::inner::MemtableId,
@@ -306,12 +307,9 @@ impl AbstractTree for BlobTree {
             data_block_size: self.index.config.data_block_size,
             index_block_size: self.index.config.index_block_size,
             folder: lsm_segment_folder,
+            filter_config: FilterConfig::default(),
         })?
         .use_compression(self.index.config.compression);
-
-        segment_writer = segment_writer.use_bloom_policy(
-            crate::segment::writer::BloomConstructionPolicy::FpRate(0.0001),
-        );
 
         let mut blob_writer = self.blobs.get_writer()?;
 

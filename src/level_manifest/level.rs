@@ -244,6 +244,7 @@ mod tests {
     use super::*;
     use crate::{
         block_cache::BlockCache,
+        bloom::{BloomFilter, Filter},
         descriptor_table::FileDescriptorTable,
         key_range::KeyRange,
         segment::{
@@ -300,7 +301,7 @@ mod tests {
             },
             block_cache,
 
-            bloom_filter: Some(crate::bloom::BloomFilter::with_fp_rate(1, 0.1)),
+            filter: Some(Filter::Bloom(BloomFilter::with_fp_rate(1, 0.1))),
         }
         .into()
     }

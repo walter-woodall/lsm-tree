@@ -233,6 +233,7 @@ impl DoubleEndedIterator for Range {
 mod tests {
     use crate::{
         block_cache::BlockCache,
+        config::FilterConfig,
         descriptor_table::FileDescriptorTable,
         segment::{
             block_index::{two_level_index::TwoLevelBlockIndex, BlockIndexImpl},
@@ -263,6 +264,7 @@ mod tests {
             folder: folder.clone(),
             data_block_size: 1_000, // NOTE: Block size 1 to for each item to be its own block
             index_block_size: 4_096,
+            filter_config: FilterConfig::default(),
         })?;
 
         let items = chars.iter().map(|&key| {
@@ -363,6 +365,7 @@ mod tests {
             folder: folder.clone(),
             data_block_size: 4_096,
             index_block_size: 4_096,
+            filter_config: FilterConfig::default(),
         })?;
 
         let items = (0u64..ITEM_COUNT).map(|i| {
@@ -564,6 +567,7 @@ mod tests {
                 folder: folder.clone(),
                 data_block_size,
                 index_block_size: 4_096,
+                filter_config: FilterConfig::default(),
             })?;
 
             let items = (0u64..ITEM_COUNT).map(|i| {
@@ -668,6 +672,7 @@ mod tests {
             folder: folder.clone(),
             data_block_size: 250,
             index_block_size: 4_096,
+            filter_config: FilterConfig::default(),
         })?;
 
         let items = chars.iter().map(|&key| {

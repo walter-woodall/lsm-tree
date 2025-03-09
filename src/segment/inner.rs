@@ -3,7 +3,10 @@
 // (found in the LICENSE-* files in the repository)
 
 use super::{block_index::BlockIndexImpl, file_offsets::FileOffsets, meta::Metadata};
-use crate::{block_cache::BlockCache, descriptor_table::FileDescriptorTable, tree::inner::TreeId};
+use crate::{
+    block_cache::BlockCache, bloom::Filter, descriptor_table::FileDescriptorTable,
+    tree::inner::TreeId,
+};
 use std::sync::Arc;
 
 pub struct Inner {
@@ -30,5 +33,5 @@ pub struct Inner {
 
     /// Bloom filter
     #[doc(hidden)]
-    pub bloom_filter: Option<crate::bloom::BloomFilter>,
+    pub filter: Option<Filter>,
 }
