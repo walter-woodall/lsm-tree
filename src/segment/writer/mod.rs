@@ -183,10 +183,22 @@ impl Writer {
             // IMPORTANT: Do not buffer *every* item's key
             // because there may be multiple versions
             // of the same key
-            self.bloom_hash_buffer.push(Filter::get_hash(
-                &item.key.user_key,
-                self.opts.filter_config.filter_type,
-            ));
+            match self.opts.filter_config.filter_size {
+                crate::config::FilterSize::Static(bpk) => {
+                    if bpk > 0 {
+                        self.bloom_hash_buffer.push(Filter::get_hash(
+                            &item.key.user_key,
+                            self.opts.filter_config.filter_type,
+                        ));
+                    }
+                }
+                crate::config::FilterSize::Dynamic(_) => {
+                    self.bloom_hash_buffer.push(Filter::get_hash(
+                        &item.key.user_key,
+                        self.opts.filter_config.filter_type,
+                    ));
+                }
+            }
         }
 
         let seqno = item.key.seqno;
@@ -314,6 +326,7 @@ impl Writer {
 mod tests {
     use super::*;
     use crate::block_cache::BlockCache;
+    use crate::config::{FilterSize, FilterType};
     use crate::descriptor_table::FileDescriptorTable;
     use crate::segment::block_index::top_level::TopLevelIndex;
     use crate::segment::reader::Reader;
@@ -381,7 +394,10 @@ mod tests {
             data_block_size: 4_096,
             index_block_size: 4_096,
             segment_id,
-            filter_config: FilterConfig::default(),
+            filter_config: FilterConfig {
+                filter_type: FilterType::Bloom,
+                filter_size: FilterSize::Static(0),
+            },
         })?;
 
         let items = (0u64..ITEM_COUNT).map(|i| {
