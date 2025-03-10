@@ -65,8 +65,8 @@ impl Filter {
 
     pub fn contains(&self, key: &[u8]) -> bool {
         match self {
-            Filter::Bloom(bloom_filter) => bloom_filter.contains_key(key),
-            Filter::BinaryFuse(binary_fuse8) => {
+            Self::Bloom(bloom_filter) => bloom_filter.contains_key(key),
+            Self::BinaryFuse(binary_fuse8) => {
                 let hash: u64 = xxh3_64(key);
                 binary_fuse8.contains(&hash)
             }
@@ -83,8 +83,8 @@ impl Filter {
     }
     pub fn contains_hash(&self, hash: HashType) -> bool {
         match self {
-            Filter::Bloom(bloom_filter) => bloom_filter.contains_hash(hash),
-            Filter::BinaryFuse(binary_fuse) => match hash {
+            Self::Bloom(bloom_filter) => bloom_filter.contains_hash(hash),
+            Self::BinaryFuse(binary_fuse) => match hash {
                 HashType::Single(hash_key) => binary_fuse.contains(&hash_key),
                 HashType::Composite(_, _) => {
                     panic!("BinaryFuse filter only supports single hash key")
@@ -95,17 +95,28 @@ impl Filter {
 
     pub fn size(&self) -> usize {
         match self {
-            Filter::Bloom(bloom_filter) => bloom_filter.len(),
-            Filter::BinaryFuse(binary_fuse8) => binary_fuse8.len(),
+            Self::Bloom(bloom_filter) => bloom_filter.len(),
+            Self::BinaryFuse(binary_fuse8) => binary_fuse8.len(),
         }
     }
 }
 
 impl Encode for Filter {
     fn encode_into<W: Write>(&self, writer: &mut W) -> Result<(), EncodeError> {
+        // Write header
+        writer.write_all(&MAGIC_BYTES)?;
+
         match self {
-            Filter::Bloom(bloom_filter) => bloom_filter.encode_into(writer),
-            Filter::BinaryFuse(binary_fuse) => binary_fuse.encode_into(writer),
+            Self::Bloom(bloom_filter) => {
+                // NOTE: Filter type
+                writer.write_u8(0)?;
+                bloom_filter.encode_into(writer)
+            }
+            Self::BinaryFuse(binary_fuse) => {
+                // NOTE: Filter type
+                writer.write_u8(1)?;
+                binary_fuse.encode_into(writer)
+            }
         }
     }
 }
@@ -128,11 +139,11 @@ impl Decode for Filter {
         match filter_type {
             0 => {
                 let filter = BloomFilter::decode_from(reader)?;
-                Ok(Filter::Bloom(filter))
+                Ok(Self::Bloom(filter))
             }
             1 => {
                 let filter = BinaryFuse8::decode_from(reader)?;
-                Ok(Filter::BinaryFuse(filter))
+                Ok(Self::BinaryFuse(filter))
             }
             _ => panic!("Unknown filter type"),
         }
@@ -162,12 +173,6 @@ pub struct BloomFilter {
 
 impl Encode for BloomFilter {
     fn encode_into<W: Write>(&self, writer: &mut W) -> Result<(), EncodeError> {
-        // Write header
-        writer.write_all(&MAGIC_BYTES)?;
-
-        // NOTE: Filter type (unused)
-        writer.write_u8(0)?;
-
         // NOTE: Hash type (unused)
         writer.write_u8(0)?;
 

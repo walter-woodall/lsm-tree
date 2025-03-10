@@ -3,18 +3,10 @@ use std::io::Write;
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use xorf::BinaryFuse8;
 
-use crate::{
-    coding::{Decode, Encode},
-    file::MAGIC_BYTES,
-};
+use crate::coding::{Decode, Encode};
 
 impl Encode for BinaryFuse8 {
     fn encode_into<W: Write>(&self, writer: &mut W) -> Result<(), crate::EncodeError> {
-        // Write header
-        writer.write_all(&MAGIC_BYTES)?;
-
-        writer.write_u8(1)?;
-
         // NOTE: Hash type (unused)
         writer.write_u8(0)?;
 
