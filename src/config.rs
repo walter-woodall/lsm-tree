@@ -72,7 +72,7 @@ pub struct FilterConfig {
 impl Default for FilterConfig {
     fn default() -> Self {
         Self {
-            filter_type: FilterType::Bloom,
+            filter_type: FilterType::BinaryFuse,
             filter_size: FilterSize::Static(10),
         }
     }
