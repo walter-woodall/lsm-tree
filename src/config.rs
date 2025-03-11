@@ -73,7 +73,7 @@ impl Default for FilterConfig {
     fn default() -> Self {
         Self {
             filter_type: FilterType::Bloom,
-            filter_size: FilterSize::Static(10),
+            filter_size: FilterSize::Dynamic(0.5),
         }
     }
 }
