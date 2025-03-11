@@ -252,6 +252,7 @@ fn merge_segments(
                 num_levels,
                 base_fpr,
             );
+            log::info!("Compacting segments. level: {}, dest_level: {}, size_ratio: {}, total_levels: {}, fpr: {}", payload.dest_level - 1, payload.dest_level, opts.strategy.get_level_ratio(), num_levels, optimal_fpr);
             FilterSize::Dynamic(optimal_fpr)
         }
     };

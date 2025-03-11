@@ -137,7 +137,7 @@ impl AbstractTree for Tree {
             crate::config::FilterSize::Static(bpk) => FilterSize::Static(bpk),
             crate::config::FilterSize::Dynamic(base_fpr) => {
                 let num_levels = self.levels.read().expect("lock is poisoned").levels.len();
-                let optimal_fpr = BloomFilter::calculate_fp_rate(1, 4.0, num_levels, base_fpr);
+                let optimal_fpr = BloomFilter::calculate_fp_rate(0, 4.0, num_levels, base_fpr);
                 FilterSize::Dynamic(optimal_fpr)
             }
         };
