@@ -537,8 +537,8 @@ mod tests {
         let base_fpr = 0.5;
 
         assert_eq!(
-            0.00048828125,
-            BloomFilter::calculate_fp_rate(1, size_ratio, num_levels, base_fpr)
+            0.00012207031,
+            BloomFilter::calculate_fp_rate(0, size_ratio, num_levels, base_fpr)
         );
         assert_eq!(
             0.0078125,
