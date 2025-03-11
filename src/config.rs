@@ -60,8 +60,12 @@ pub enum FilterSize {
 }
 
 #[derive(Clone, Copy, Debug)]
+/// Config for the type of filter and size used by the LSM Tree
 pub struct FilterConfig {
+    /// The type of filter. Either BloomFilter or BinaryFuse
     pub filter_type: FilterType,
+    /// The size of the filter. Either static with a preset bits per key or dynamic where we derive
+    /// the optimal bits per key for you
     pub filter_size: FilterSize,
 }
 

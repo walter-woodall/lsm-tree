@@ -201,7 +201,7 @@ pub use {
 pub use {
     block_cache::BlockCache,
     coding::{DecodeError, EncodeError},
-    config::{Config, TreeType},
+    config::{Config, FilterConfig, TreeType},
     error::{Error, Result},
     memtable::Memtable,
     r#abstract::AbstractTree,
